@@ -64,8 +64,15 @@ fn add_then_uninstall_and_drop_cowsay() {
 
     let mut m = Model::default();
     engine::run_blocking(&repo(), JobKind::List, &mut m).unwrap();
-    let item = m.items.iter().find(|i| i.id == "brew:cowsay").expect("listed");
-    assert_eq!((item.group.as_str(), item.state), ("cli-extras", ItemState::Installed));
+    let item = m
+        .items
+        .iter()
+        .find(|i| i.id == "brew:cowsay")
+        .expect("listed");
+    assert_eq!(
+        (item.group.as_str(), item.state),
+        ("cli-extras", ItemState::Installed)
+    );
 
     let gone = run(Action::Uninstall {
         ids: vec!["brew:cowsay".into()],
@@ -74,5 +81,8 @@ fn add_then_uninstall_and_drop_cowsay() {
     assert!(ok(&gone, "brew:cowsay") && ok(&gone, "commit"), "{gone:?}");
 
     engine::run_blocking(&repo(), JobKind::List, &mut m).unwrap();
-    assert!(m.items.iter().all(|i| i.id != "brew:cowsay"), "dropped from the repo");
+    assert!(
+        m.items.iter().all(|i| i.id != "brew:cowsay"),
+        "dropped from the repo"
+    );
 }
