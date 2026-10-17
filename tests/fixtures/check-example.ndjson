@@ -1,0 +1,7 @@
+{"type":"hello","api":1,"cmd":"check","dry_run":false,"repo":"/tmp/engine","log":"/tmp/engine-logs/check.log"}
+{"type":"stage","id":"packages","title":"Homebrew packages","n":1,"total":2}
+{"type":"result","status":"ok","stage":"packages","id":"group:group-a","item":"Group A","detail":"satisfied"}
+{"type":"result","status":"warn","stage":"packages","id":"brew:pkg-one","item":"brew pkg-one","detail":"missing"}
+{"type":"stage","id":"dotfiles","title":"Dotfiles","n":2,"total":2}
+{"type":"result","status":"warn","stage":"dotfiles","id":"dotfile:~/.example-rc","item":"differs: ~/.example-rc","detail":"yours differs from repo"}
+{"type":"done","ok":1,"skip":0,"warn":2,"manual":0,"fail":0,"exit":0,"log":"/tmp/engine-logs/check.log"}

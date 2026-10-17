@@ -1,0 +1,19 @@
+[package]
+name = "macsetup"
+version = "0.0.1"
+edition = "2024"
+description = "Terminal dashboard for a macOS setup engine"
+license = "MIT"
+repository = "https://github.com/ryankschultze/macsetup"
+homepage = "https://github.com/ryankschultze/macsetup"
+readme = "README.md"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
