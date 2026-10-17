@@ -27,10 +27,10 @@ always `done`, even after a failure. Unknown fields must be ignored by readers.
 | `result` | `status` (ok, skip, warn, manual, fail), `stage`, `id`, `item`, `detail` |
 | `group` | `id`, `title`, `desc`, `selected` |
 | `profile` | `id`, `groups` (array) |
-| `item` | `id`, `kind`, `name`, `group`, `state` (installed, missing, outside, mismatch), `desc`, `meta` (url, app, bundle) |
+| `item` | `id`, `kind`, `name`, `group`, `state` (installed, missing, outside, mismatch, unknown), `desc`, `meta` (object of strings: url, app, bundle, …; `{}` when none) |
 | `dotfile` | `id`, `path`, `state` (pending, differs) |
 | `untracked` | `id`, `kind`, `name`, `hint` |
-| `needs` | `id`, `question`, `default`, `answer_with` (the flag that answers it) |
+| `needs` | `id`, `kind` (confirm, input, choose, choose_many, pause), `question`, `default`, `answer_with` (the flag that answers it, or empty) |
 | `log` | `level` (info, warn, error), `text` |
 | `done` | `ok`, `skip`, `warn`, `manual`, `fail`, `exit`, `log` |
 
@@ -39,6 +39,28 @@ always `done`, even after a failure. Unknown fields must be ignored by readers.
 IDs are `<kind>:<name>`, for example `brew:pkg-one`, `cask:app-one`, `mas:123456789`,
 `npm:pkg-two`, `uv:pkg-three`, `cargo:pkg-four`, `bun:tool-one`, `vendor:app_two`,
 `dotfile:~/.example-rc`, `repo:repo-one`, `group:group-a`.
+
+### `setup list`
+
+Prints `hello`, every `profile` and `group` (in file order), then every `item`, then `done`.
+No stages and no results; it changes nothing.
+
+- `item.kind`: brew, cask, mas, npm, uv, cargo, go, bun, vendor. Taps are not items.
+- `item.state`: `installed`; `missing`; `outside` (a cask whose app, font or binary exists
+  outside Homebrew, so the engine skips it); `mismatch` (an installed app with an unexpected
+  bundle ID); `unknown` (the tool that would tell isn't installed).
+- `item.desc`: a human description, possibly empty.
+- `group.selected`: whether the group is in the saved selection.
+
+### `dotfile` events
+
+`setup check` emits one `dotfile` event per file that is `pending` (the engine would write it)
+or `differs` (yours differs from the repo), right after that file's `result`.
+
+### Readers
+
+Readers ignore unknown fields and unknown event types, and treat an unknown `state` or
+`status` value as unknown rather than failing. A run that ends without `done` failed.
 
 ## Commands
 

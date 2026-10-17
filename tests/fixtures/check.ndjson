@@ -1,0 +1,21 @@
+{"type":"hello","api":1,"cmd":"check","dry_run":false,"repo":"/opt/engine","log":"/tmp/engine-logs/20260101-120001-check.log"}
+{"type":"stage","id":"preflight","title":"Preflight","n":1,"total":6}
+{"type":"log","level":"info","text":"Groups: group-a group-b"}
+{"type":"stage","id":"packages","title":"Homebrew packages","n":2,"total":6}
+{"type":"result","status":"warn","stage":"packages","id":"group:group-a","item":"Group A","detail":"missing:\n      → Formula pkg-two needs to be installed."}
+{"type":"result","status":"ok","stage":"packages","id":"group:group-b","item":"Group B","detail":"satisfied"}
+{"type":"result","status":"fail","stage":"packages","id":"cask:app-two","item":"app identity: app-two","detail":"App Two.app is com.other.app, expected com.example.app-two"}
+{"type":"stage","id":"vendor","title":"Vendor installs","n":3,"total":6}
+{"type":"result","status":"warn","stage":"vendor","id":"vendor:vendor_one","item":"Vendor One (no cask)","detail":"missing (https://example.com/vendor-one)"}
+{"type":"stage","id":"repos","title":"Companion repos","n":4,"total":6}
+{"type":"result","status":"ok","stage":"repos","id":"repo:repo-one","item":"repo-one","detail":"/opt/repos/repo-one"}
+{"type":"stage","id":"secrets","title":"Secrets","n":5,"total":6}
+{"type":"result","status":"ok","stage":"secrets","id":"secret:pass-store","item":"pass store","detail":"/opt/store"}
+{"type":"result","status":"warn","stage":"secrets","id":"secret:map","item":"secret map","detail":"missing (~/.config/secrets/map)"}
+{"type":"needs","id":"check-again","kind":"confirm","question":"Check again?","default":"y","answer_with":""}
+{"type":"stage","id":"dotfiles","title":"Dotfiles","n":6,"total":6}
+{"type":"result","status":"warn","stage":"dotfiles","id":"dotfile:~/.example.conf","item":"differs: ~/.example.conf","detail":"yours differs from repo (setup review)"}
+{"type":"dotfile","id":"dotfile:~/.example.conf","path":"~/.example.conf","state":"differs"}
+{"type":"result","status":"warn","stage":"dotfiles","id":"dotfile:~/.example-rc","item":"pending: ~/.example-rc","detail":"would be written by setup"}
+{"type":"dotfile","id":"dotfile:~/.example-rc","path":"~/.example-rc","state":"pending"}
+{"type":"done","ok":3,"skip":0,"warn":5,"manual":0,"fail":1,"exit":1,"log":"/tmp/engine-logs/20260101-120001-check.log"}

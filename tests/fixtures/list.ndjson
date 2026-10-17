@@ -1,0 +1,18 @@
+{"type":"hello","api":1,"cmd":"list","dry_run":false,"repo":"/opt/engine","log":"/tmp/engine-logs/20260101-120000-list.log"}
+{"type":"profile","id":"small","groups":["group-a","group-b"]}
+{"type":"profile","id":"everything","groups":["group-a","group-b","group-c"]}
+{"type":"group","id":"group-a","title":"Group A","desc":"pkg-one, pkg-two, App One","selected":true}
+{"type":"group","id":"group-b","title":"Group B","desc":"language tools","selected":true}
+{"type":"group","id":"group-c","title":"Group C","desc":"nothing in it yet","selected":false}
+{"type":"item","id":"brew:pkg-one","kind":"brew","name":"pkg-one","group":"group-a","state":"installed","desc":"An example command-line tool","meta":{}}
+{"type":"item","id":"brew:pkg-two","kind":"brew","name":"pkg-two","group":"group-a","state":"missing","desc":"Another example tool","meta":{}}
+{"type":"item","id":"cask:app-one","kind":"cask","name":"app-one","group":"group-a","state":"outside","desc":"","meta":{"url":"https://example.com/app-one","app":"App One.app","bundle":"com.example.app-one"}}
+{"type":"item","id":"cask:app-two","kind":"cask","name":"app-two","group":"group-a","state":"mismatch","desc":"","meta":{"url":"https://example.com/app-two","app":"App Two.app","bundle":"com.example.app-two"}}
+{"type":"item","id":"mas:Store App","kind":"mas","name":"Store App","group":"group-a","state":"unknown","desc":"","meta":{}}
+{"type":"item","id":"vendor:vendor_one","kind":"vendor","name":"vendor_one","group":"group-a","state":"missing","desc":"Vendor One (no cask)","meta":{"url":"https://example.com/vendor-one"}}
+{"type":"item","id":"npm:tool-npm","kind":"npm","name":"tool-npm","group":"group-b","state":"installed","desc":"Café ✓ tool from npm","meta":{}}
+{"type":"item","id":"uv:tool-uv","kind":"uv","name":"tool-uv","group":"group-b","state":"missing","desc":"","meta":{}}
+{"type":"item","id":"cargo:tool-cargo","kind":"cargo","name":"tool-cargo","group":"group-b","state":"installed","desc":"","meta":{}}
+{"type":"item","id":"go:example.com/tool-go","kind":"go","name":"example.com/tool-go","group":"group-b","state":"installed","desc":"","meta":{}}
+{"type":"item","id":"bun:tool-bun","kind":"bun","name":"tool-bun","group":"group-b","state":"missing","desc":"","meta":{}}
+{"type":"done","ok":0,"skip":0,"warn":0,"manual":0,"fail":0,"exit":0,"log":"/tmp/engine-logs/20260101-120000-list.log"}

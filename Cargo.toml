@@ -1,6 +1,6 @@
 [package]
 name = "macsetup"
-version = "0.0.1"
+version = "0.1.0"
 edition = "2024"
 description = "Terminal dashboard for a macOS setup engine"
 license = "MIT"
@@ -12,6 +12,10 @@ readme = "README.md"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 toml = "1"
+ratatui = "0.30"
+
+[dev-dependencies]
+insta = "1"
 
 # The profile that 'dist' will build with
 [profile.dist]

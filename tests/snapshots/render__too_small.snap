@@ -1,0 +1,16 @@
+---
+source: tests/render.rs
+expression: "render(&common::loaded(), 50, 12)"
+---
+"                                                  "
+"                                                  "
+"                                                  "
+"                                                  "
+"      Terminal too small: 50×12 (needs 60×15)     "
+"                                                  "
+"                                                  "
+"                                                  "
+"                                                  "
+"                                                  "
+"                                                  "
+"                                                  "

@@ -1,0 +1,11 @@
+#!/bin/bash
+# Stand-in engine that dies part-way: a hello, a bad line, then exit 1 without `done`.
+case "${1:-}" in
+  api) echo '{"api":1}' ;;
+  *)
+    echo '{"type":"hello","api":1,"cmd":"'"${1:-}"'","dry_run":false,"repo":"/opt/engine","log":""}'
+    echo 'this is not json'
+    echo 'engine blew up' >&2
+    exit 1
+    ;;
+esac
