@@ -1,0 +1,9 @@
+#!/bin/bash
+# Stand-in engine for tests: prints a hand-written fixture for each command.
+fixtures="$(cd "$(dirname "$0")/../fixtures" && pwd)"
+case "${1:-}" in
+  api)   echo '{"api":1}' ;;
+  list)  cat "$fixtures/list.ndjson" ;;
+  check) cat "$fixtures/check.ndjson" ;;
+  *)     echo "fake setup: unknown command '${1:-}'" >&2; exit 2 ;;
+esac

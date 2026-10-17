@@ -1,7 +1,9 @@
-//! Every fixture line is a JSON object with a `type`, starting with `hello`
-//! and ending with `done`.
+//! Every fixture is a well-formed event stream: each line parses into a known
+//! event, the first is `hello` and the last is `done`.
 
 use std::fs;
+
+use macsetup::events::{Event, parse_line};
 
 #[test]
 fn fixtures_are_well_formed_event_streams() {
@@ -14,30 +16,50 @@ fn fixtures_are_well_formed_event_streams() {
         }
         seen += 1;
         let text = fs::read_to_string(&path).unwrap();
-        let types: Vec<String> = text
+        let events: Vec<Event> = text
             .lines()
             .filter(|l| !l.trim().is_empty())
-            .map(|l| {
-                let v: serde_json::Value = serde_json::from_str(l)
-                    .unwrap_or_else(|e| panic!("{}: {e}: {l}", path.display()));
-                v["type"]
-                    .as_str()
-                    .expect("every event has a type")
-                    .to_string()
-            })
+            .map(|l| parse_line(l).unwrap_or_else(|e| panic!("{}: {e}", path.display())))
             .collect();
-        assert_eq!(
-            types.first().map(String::as_str),
-            Some("hello"),
-            "{}",
+        assert!(
+            matches!(events.first(), Some(Event::Hello(_))),
+            "{} must start with hello",
             path.display()
         );
-        assert_eq!(
-            types.last().map(String::as_str),
-            Some("done"),
-            "{}",
+        assert!(
+            matches!(events.last(), Some(Event::Done(_))),
+            "{} must end with done",
+            path.display()
+        );
+        assert!(
+            !events.contains(&Event::Other),
+            "{} has an event type this dashboard doesn't know",
             path.display()
         );
     }
-    assert!(seen > 0, "no fixtures found");
+    assert!(seen >= 3, "fixtures missing");
+}
+
+#[test]
+fn list_fixture_covers_every_kind_and_state() {
+    let text = fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/list.ndjson"
+    ))
+    .unwrap();
+    let items: Vec<_> = text
+        .lines()
+        .filter_map(|l| match parse_line(l).unwrap() {
+            Event::Item(i) => Some(i),
+            _ => None,
+        })
+        .collect();
+    for kind in [
+        "brew", "cask", "mas", "npm", "uv", "cargo", "go", "bun", "vendor",
+    ] {
+        assert!(items.iter().any(|i| i.kind == kind), "no {kind} item");
+    }
+    for state in macsetup::events::ItemState::ALL {
+        assert!(items.iter().any(|i| i.state == state), "no {state:?} item");
+    }
 }

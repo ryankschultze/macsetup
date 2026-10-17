@@ -1,7 +1,8 @@
-//! Finding the setup engine: `$MACSETUP_REPO`, then `repo = "…"` in
-//! `$XDG_CONFIG_HOME/macsetup/config.toml` (default `~/.config`), then the
-//! parent of `chezmoi source-path`.
+//! Finding the setup engine: `--repo`, then `$MACSETUP_REPO`, then `repo = "…"`
+//! in `$XDG_CONFIG_HOME/macsetup/config.toml` (default `~/.config`), then
+//! `chezmoi source-path` or its parent.
 
+use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -10,6 +11,7 @@ use serde::Deserialize;
 /// Where a repo path came from, for error messages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
+    Flag,
     Env,
     ConfigFile,
     Chezmoi,
@@ -18,6 +20,7 @@ pub enum Source {
 impl Source {
     pub fn describe(self) -> &'static str {
         match self {
+            Source::Flag => "--repo",
             Source::Env => "$MACSETUP_REPO",
             Source::ConfigFile => "config.toml",
             Source::Chezmoi => "chezmoi source-path",
@@ -32,6 +35,7 @@ struct ConfigFile {
 
 /// Inputs to repo discovery, gathered from the environment by [`Inputs::from_env`].
 pub struct Inputs {
+    pub flag_repo: Option<String>,
     pub env_repo: Option<String>,
     pub config_file: Option<PathBuf>,
     pub home: Option<PathBuf>,
@@ -46,6 +50,7 @@ impl Inputs {
             .map(PathBuf::from)
             .or_else(|| home.as_ref().map(|h| h.join(".config")));
         Inputs {
+            flag_repo: None,
             env_repo: std::env::var("MACSETUP_REPO").ok(),
             config_file: config_dir.map(|d| d.join("macsetup").join("config.toml")),
             home,
@@ -62,23 +67,61 @@ fn chezmoi_source_path() -> Option<String> {
         .filter(|s| !s.is_empty())
 }
 
-fn expand_tilde(path: &str, home: Option<&Path>) -> PathBuf {
+pub fn expand_tilde(path: &str, home: Option<&Path>) -> PathBuf {
     match (path.strip_prefix("~/"), home) {
         (Some(rest), Some(home)) => home.join(rest),
         _ => PathBuf::from(path),
     }
 }
 
-/// The engine repo is valid when it holds an executable-looking `setup` file.
-fn has_setup(repo: &Path) -> bool {
-    repo.join("setup").is_file()
+/// The engine repo is valid when it holds an executable `setup` file.
+pub fn has_setup(repo: &Path) -> bool {
+    std::fs::metadata(repo.join("setup"))
+        .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+        .unwrap_or(false)
+}
+
+/// Why no engine was found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FindError {
+    /// Nothing points anywhere: a first run.
+    NotFound,
+    /// Something points somewhere wrong, or the config can't be read.
+    Invalid(String),
+}
+
+impl std::fmt::Display for FindError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FindError::NotFound => f.write_str(
+                "no setup engine found. Set MACSETUP_REPO, add `repo = \"…\"` to \
+                 ~/.config/macsetup/config.toml, or initialise chezmoi from the engine repo.",
+            ),
+            FindError::Invalid(e) => f.write_str(e),
+        }
+    }
+}
+
+/// `chezmoi source-path` or its parent, whichever holds `setup` (the source
+/// dir may be a subfolder of the repo via `.chezmoiroot`).
+pub fn chezmoi_candidate(inputs: &Inputs) -> Option<PathBuf> {
+    let source = PathBuf::from(inputs.chezmoi_source.as_ref()?);
+    [Some(source.as_path()), source.parent()]
+        .into_iter()
+        .flatten()
+        .find(|c| has_setup(c))
+        .map(Path::to_path_buf)
 }
 
 /// Find the engine repo. Each source is tried in order; a source that is set
 /// but points somewhere without a `setup` file is an error rather than a
 /// silent fall-through, so a typo in `$MACSETUP_REPO` is reported.
-pub fn find_repo(inputs: &Inputs) -> Result<(PathBuf, Source), String> {
+pub fn find_repo(inputs: &Inputs) -> Result<(PathBuf, Source), FindError> {
     let home = inputs.home.as_deref();
+
+    if let Some(repo) = inputs.flag_repo.as_deref().filter(|s| !s.is_empty()) {
+        return checked(expand_tilde(repo, home), Source::Flag);
+    }
 
     if let Some(repo) = inputs.env_repo.as_deref().filter(|s| !s.is_empty()) {
         return checked(expand_tilde(repo, home), Source::Env);
@@ -86,45 +129,57 @@ pub fn find_repo(inputs: &Inputs) -> Result<(PathBuf, Source), String> {
 
     if let Some(file) = inputs.config_file.as_ref().filter(|f| f.is_file()) {
         let text = std::fs::read_to_string(file)
-            .map_err(|e| format!("cannot read {}: {e}", file.display()))?;
-        let parsed: ConfigFile =
-            toml::from_str(&text).map_err(|e| format!("cannot parse {}: {e}", file.display()))?;
+            .map_err(|e| FindError::Invalid(format!("cannot read {}: {e}", file.display())))?;
+        let parsed: ConfigFile = toml::from_str(&text)
+            .map_err(|e| FindError::Invalid(format!("cannot parse {}: {e}", file.display())))?;
         if let Some(repo) = parsed.repo {
             return checked(expand_tilde(&repo, home), Source::ConfigFile);
         }
     }
 
-    if let Some(source) = &inputs.chezmoi_source {
-        // The chezmoi source dir may be a subfolder of the repo (`.chezmoiroot`),
-        // so take the first of it and its parent that holds `setup`.
-        let source = PathBuf::from(source);
-        for candidate in [Some(source.as_path()), source.parent()]
-            .into_iter()
-            .flatten()
-        {
-            if has_setup(candidate) {
-                return Ok((candidate.to_path_buf(), Source::Chezmoi));
-            }
-        }
+    if let Some(repo) = chezmoi_candidate(inputs) {
+        return Ok((repo, Source::Chezmoi));
     }
 
-    Err(
-        "no setup engine found. Set MACSETUP_REPO, add `repo = \"…\"` to \
-         ~/.config/macsetup/config.toml, or initialise chezmoi from the engine repo."
-            .to_string(),
-    )
+    Err(FindError::NotFound)
 }
 
-fn checked(repo: PathBuf, source: Source) -> Result<(PathBuf, Source), String> {
+fn checked(repo: PathBuf, source: Source) -> Result<(PathBuf, Source), FindError> {
     if has_setup(&repo) {
         Ok((repo, source))
     } else {
-        Err(format!(
-            "{} points to {}, which has no `setup` file",
+        Err(FindError::Invalid(format!(
+            "{} points to {}, which has no executable `setup` file",
             source.describe(),
             repo.display()
-        ))
+        )))
     }
+}
+
+/// Save `repo = "<typed>"` to the config file, for the first-run screen.
+/// The path is checked first, and an existing config file is never replaced.
+pub fn write_config(file: &Path, typed: &str, home: Option<&Path>) -> Result<PathBuf, String> {
+    let typed = typed.trim();
+    if typed.is_empty() {
+        return Err("type the path of the folder that holds `setup`".into());
+    }
+    let repo = expand_tilde(typed, home);
+    if !has_setup(&repo) {
+        return Err(format!("{} has no executable `setup` file", repo.display()));
+    }
+    if file.exists() {
+        return Err(format!(
+            "{} already exists; edit it by hand instead",
+            file.display()
+        ));
+    }
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    }
+    let line = format!("repo = {}\n", toml::Value::String(typed.to_string()));
+    std::fs::write(file, line).map_err(|e| format!("cannot write {}: {e}", file.display()))?;
+    Ok(repo)
 }
 
 #[cfg(test)]
@@ -155,12 +210,15 @@ mod tests {
 
     fn engine_in(dir: &Path) -> PathBuf {
         std::fs::create_dir_all(dir).unwrap();
-        std::fs::write(dir.join("setup"), "#!/bin/sh\n").unwrap();
+        let setup = dir.join("setup");
+        std::fs::write(&setup, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&setup, std::fs::Permissions::from_mode(0o755)).unwrap();
         dir.to_path_buf()
     }
 
     fn none() -> Inputs {
         Inputs {
+            flag_repo: None,
             env_repo: None,
             config_file: None,
             home: None,
@@ -188,11 +246,60 @@ mod tests {
             env_repo: Some(t.0.display().to_string()),
             ..none()
         };
-        let err = find_repo(&inputs).unwrap_err();
+        let err = find_repo(&inputs).unwrap_err().to_string();
         assert!(
-            err.contains("$MACSETUP_REPO") && err.contains("no `setup` file"),
+            err.contains("$MACSETUP_REPO") && err.contains("no executable `setup` file"),
             "{err}"
         );
+    }
+
+    #[test]
+    fn flag_beats_env() {
+        let t = TempDir::new();
+        let flag = engine_in(&t.0.join("flag"));
+        let env = engine_in(&t.0.join("env"));
+        let inputs = Inputs {
+            flag_repo: Some(flag.display().to_string()),
+            env_repo: Some(env.display().to_string()),
+            ..none()
+        };
+        assert_eq!(find_repo(&inputs).unwrap(), (flag, Source::Flag));
+    }
+
+    #[test]
+    fn non_executable_setup_doesnt_count() {
+        let t = TempDir::new();
+        let repo = engine_in(&t.0.join("engine"));
+        std::fs::set_permissions(repo.join("setup"), std::fs::Permissions::from_mode(0o644))
+            .unwrap();
+        assert!(!has_setup(&repo));
+    }
+
+    #[test]
+    fn write_config_checks_the_path_and_never_overwrites() {
+        let t = TempDir::new();
+        let home = t.0.join("home");
+        let repo = engine_in(&home.join("src/engine"));
+        let cfg = t.0.join("cfg/macsetup/config.toml");
+        assert!(write_config(&cfg, "~/nowhere", Some(&home)).is_err());
+        assert!(!cfg.exists());
+        assert_eq!(
+            write_config(&cfg, "~/src/engine", Some(&home)).unwrap(),
+            repo
+        );
+        assert_eq!(
+            std::fs::read_to_string(&cfg).unwrap(),
+            "repo = \"~/src/engine\"\n"
+        );
+        let again = write_config(&cfg, "~/src/engine", Some(&home)).unwrap_err();
+        assert!(again.contains("already exists"), "{again}");
+        // and discovery reads it back
+        let inputs = Inputs {
+            config_file: Some(cfg),
+            home: Some(home),
+            ..none()
+        };
+        assert_eq!(find_repo(&inputs).unwrap(), (repo, Source::ConfigFile));
     }
 
     #[test]
@@ -240,6 +347,7 @@ mod tests {
     #[test]
     fn nothing_found() {
         let err = find_repo(&none()).unwrap_err();
-        assert!(err.contains("MACSETUP_REPO"), "{err}");
+        assert_eq!(err, FindError::NotFound);
+        assert!(err.to_string().contains("MACSETUP_REPO"));
     }
 }
