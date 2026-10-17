@@ -2,7 +2,7 @@
 source: tests/render.rs
 expression: "render(&app, 100, 30)"
 ---
-" macsetup   1 Overview   2 Packages   3 Capture   4 Dotfiles   5 Activity                    ? help "
+" macsetup   1 Overview   2 Packages   3 Capture   4 Dotfiles   5 Activity   6 Profiles       ? help "
 "┌ Capture ─────────────────────────────────────────────────────────────────────────────────────────┐"
 "│Everything installed here is already in a Brewfile.                                               │"
 "│                                                                                                  │"

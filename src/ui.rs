@@ -9,7 +9,7 @@ use ratatui::widgets::{
 };
 
 use crate::activity::{self, Outcome};
-use crate::app::{App, FirstRun, PickFor, Row, SPINNER, Screen, Tab};
+use crate::app::{ALWAYS_ON, App, FirstRun, PickFor, ProfilesFocus, Row, SPINNER, Screen, Tab};
 use crate::events::{DotfileState, ItemState, Status, meta_text};
 use crate::model::JobKind;
 use crate::theme::{dotfile_symbol, status_symbol};
@@ -126,6 +126,7 @@ fn draw_main(frame: &mut Frame, app: &App, area: Rect) {
         Tab::Capture => draw_capture(frame, app, body),
         Tab::Dotfiles => draw_dotfiles(frame, app, body),
         Tab::Activity => draw_activity(frame, app, body),
+        Tab::Profiles => draw_profiles(frame, app, body),
     }
     draw_status(frame, app, status);
     if app.dialog.is_some() {
@@ -156,13 +157,13 @@ fn hints<'a>(app: &App, pairs: &[(&'a str, &'a str)]) -> Line<'a> {
 fn draw_tabs(frame: &mut Frame, app: &App, area: Rect) {
     let t = app.theme;
     // Narrow terminals drop the name, then shorten inactive tabs to their number.
-    let mut spans = if area.width >= 90 {
+    let mut spans = if area.width >= 100 {
         vec![Span::styled(" macsetup ", t.heading()), Span::raw(" ")]
     } else {
         vec![]
     };
     for (i, tab) in Tab::ALL.iter().enumerate() {
-        let label = if area.width >= 80 || *tab == app.tab {
+        let label = if area.width >= 88 || *tab == app.tab {
             format!(" {} {} ", i + 1, tab.title())
         } else {
             format!(" {} ", i + 1)
@@ -281,7 +282,10 @@ fn draw_overview(frame: &mut Frame, app: &App, area: Rect) {
             Cell::from("check"),
         ])
         .style(t.heading());
+        // With a saved selection, groups outside it are dimmed (still listed).
+        let any_selected = app.model.groups.iter().any(|g| g.selected);
         let rows = app.model.group_order().into_iter().map(|id| {
+            let unselected = any_selected && !app.model.group(id).is_some_and(|g| g.selected);
             let c = counts.get(id).copied().unwrap_or_default();
             let title = app
                 .model
@@ -297,9 +301,19 @@ fn draw_overview(frame: &mut Frame, app: &App, area: Rect) {
             let num = |n: usize, s: ItemState| {
                 if n == 0 {
                     Cell::from(Span::styled("·", t.dim()))
+                } else if unselected {
+                    Cell::from(Span::styled(n.to_string(), t.dim()))
                 } else {
                     Cell::from(Span::styled(n.to_string(), t.item_state(s)))
                 }
+            };
+            let name = if unselected {
+                Cell::from(Line::from(vec![
+                    Span::styled(title.to_string(), t.dim()),
+                    Span::styled(" · not selected", t.dim()),
+                ]))
+            } else {
+                Cell::from(title.to_string())
             };
             let check = match app.model.group_result(id) {
                 Some(r) => Cell::from(Span::styled(
@@ -310,7 +324,7 @@ fn draw_overview(frame: &mut Frame, app: &App, area: Rect) {
                 None => Cell::from(Span::styled("–", t.dim())),
             };
             TableRow::new(vec![
-                Cell::from(title.to_string()),
+                name,
                 num(c.installed, ItemState::Installed),
                 num(c.missing, ItemState::Missing),
                 num(c.outside, ItemState::Outside),
@@ -733,6 +747,159 @@ fn draw_capture(frame: &mut Frame, app: &App, area: Rect) {
     );
 }
 
+// --- Profiles ---------------------------------------------------------------
+
+fn draw_profiles(frame: &mut Frame, app: &App, area: Rect) {
+    let t = app.theme;
+    if let Some(line) = list_state_notice(app) {
+        notice(frame, area, "Profiles", line);
+        return;
+    }
+    let [lists, footer] =
+        Layout::vertical([Constraint::Fill(1), Constraint::Length(4)]).areas(area);
+    let (left, right) = split_detail(lists);
+    let saved = app.saved_groups();
+    let current = app.effective_groups();
+    let focused = |f: ProfilesFocus| app.prof_focus == f;
+    let highlight = |f: ProfilesFocus| {
+        if focused(f) {
+            t.selected()
+        } else {
+            Style::new()
+        }
+    };
+    let border = |f: ProfilesFocus| if focused(f) { t.key() } else { Style::new() };
+
+    // Groups: [x] = in the selection being edited; + and − mark unsaved changes.
+    let rows: Vec<ListItem> = app
+        .model
+        .group_order()
+        .into_iter()
+        .map(|id| {
+            let g = app.model.group(id);
+            let title = g
+                .map(|g| g.title.as_str())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(id);
+            let on = id == ALWAYS_ON || current.contains(id);
+            let change = match (current.contains(id), saved.contains(id)) {
+                (true, false) => Span::styled("+ ", t.status(Status::Ok)),
+                (false, true) => Span::styled("− ", t.status(Status::Fail)),
+                _ => Span::raw("  "),
+            };
+            let mut spans = vec![
+                Span::raw(if on { "[x] " } else { "[ ] " }),
+                change,
+                Span::raw(title.to_string()),
+            ];
+            if id == ALWAYS_ON {
+                spans.push(Span::styled("  always installed", t.dim()));
+            } else if let Some(g) = g
+                && !g.desc.is_empty()
+            {
+                spans.push(Span::styled(format!("  {}", g.desc), t.dim()));
+            }
+            ListItem::new(Line::from(spans))
+        })
+        .collect();
+    let title = format!("Groups · {} selected", current.len());
+    let list = List::new(rows)
+        .block(block(&title).border_style(border(ProfilesFocus::Groups)))
+        .highlight_style(highlight(ProfilesFocus::Groups));
+    let mut state = ListState::default().with_selected(Some(app.grp_sel));
+    frame.render_stateful_widget(list, left, &mut state);
+
+    // Profiles, with the one matching the current selection marked.
+    let width = app
+        .model
+        .profiles
+        .iter()
+        .map(|p| p.id.chars().count())
+        .max()
+        .unwrap_or(0);
+    let rows: Vec<ListItem> = app
+        .model
+        .profiles
+        .iter()
+        .map(|p| {
+            let mut spans = vec![
+                Span::raw(format!("{:<width$}  ", p.id)),
+                Span::styled(p.groups.join(", "), t.dim()),
+            ];
+            if app.profile_matches(&p.id) {
+                spans.insert(1, Span::styled("= current  ", t.key()));
+            }
+            ListItem::new(Line::from(spans))
+        })
+        .collect();
+    let list = if rows.is_empty() {
+        List::new(vec![ListItem::new(Span::styled(
+            "The engine lists no profiles.",
+            t.dim(),
+        ))])
+    } else {
+        List::new(rows)
+    }
+    .block(block("Profiles").border_style(border(ProfilesFocus::Profiles)))
+    .highlight_style(highlight(ProfilesFocus::Profiles));
+    let mut state = ListState::default().with_selected(Some(app.prof_sel));
+    frame.render_stateful_widget(list, right, &mut state);
+
+    // What's saved, what's pending, and the keys.
+    let (added, removed) = app.pending_diff();
+    let mut lines = Vec::new();
+    if app.pending_groups.is_some() {
+        let mut spans = vec![Span::styled("Unsaved: ", t.heading())];
+        if !added.is_empty() {
+            spans.push(Span::styled(
+                format!("+ {}", added.join(", ")),
+                t.status(Status::Ok),
+            ));
+        }
+        if !removed.is_empty() {
+            if !added.is_empty() {
+                spans.push(Span::raw("  "));
+            }
+            spans.push(Span::styled(
+                format!("− {}", removed.join(", ")),
+                t.status(Status::Fail),
+            ));
+        }
+        lines.push(Line::from(spans));
+        lines.push(hints(
+            app,
+            &[
+                ("Enter", "save"),
+                ("Esc", "discard"),
+                ("Space", "toggle"),
+                ("p", "apply profile"),
+            ],
+        ));
+    } else {
+        lines.push(if saved.is_empty() {
+            Line::from(Span::styled(
+                "Nothing saved yet: setup asks which groups to use on its next run.",
+                t.dim(),
+            ))
+        } else {
+            Line::from(vec![
+                Span::styled("Saved: ", t.heading()),
+                Span::raw(app.in_group_order(&saved).join(", ")),
+            ])
+        });
+        lines.push(hints(
+            app,
+            &[
+                ("Space", "toggle"),
+                ("p", "apply profile"),
+                ("← →", "switch list"),
+                ("R", "reset saved answers"),
+            ],
+        ));
+    }
+    frame.render_widget(Paragraph::new(lines).block(block("Selection")), footer);
+}
+
 // --- Activity ---------------------------------------------------------------
 
 fn job_symbol(app: &App, job: &activity::JobLog) -> (&'static str, Style) {
@@ -985,7 +1152,7 @@ fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
         ])
     };
     let mut lines = vec![
-        key("1–5  Tab", "switch tab"),
+        key("1–6  Tab", "switch tab"),
         key("↑ ↓  j k", "move (arrows only on Dotfiles)"),
         key("r  c", "reload lists · run a check"),
         key("Esc  q", "clear filters, else quit"),
@@ -1003,6 +1170,10 @@ fn draw_help(frame: &mut Frame, app: &App, area: Rect) {
         key("k t m l", "keep · take · merge · decide later"),
         key("l", "open the latest log (Overview)"),
         key("x  y", "cancel the running job · copy its log path"),
+        Line::from(Span::styled("Profiles", t.heading())),
+        key("Space  p", "toggle a group · apply a profile"),
+        key("Enter  Esc", "save the selection · discard changes"),
+        key("← →  R", "switch list · reset saved answers"),
         Line::from(Span::styled(
             "Every action asks first; D runs a dry run.",
             t.dim(),

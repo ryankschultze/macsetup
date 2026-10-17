@@ -3,19 +3,21 @@
 # With --events FILE the events go to FILE instead of stdout; --dry-run picks
 # the dry-run fixture for actions. `slow` waits (for cancel tests).
 fixtures="$(cd "$(dirname "$0")/../fixtures" && pwd)"
-cmd="" events="" dry=0 list=0
+cmd="" events="" dry=0 list=0 reset=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --events) events="$2"; shift ;;
     --dry-run) dry=1 ;;
     --list) list=1 ;;
-    api|list|check|capture|install|uninstall|move|drop|review|slow) [ -z "$cmd" ] && cmd="$1" ;;
+    --reset) reset=1 ;;
+    api|list|check|capture|install|uninstall|move|drop|review|groups|slow) [ -z "$cmd" ] && cmd="$1" ;;
   esac
   shift
 done
 case "$cmd" in
   api)   echo '{"api":1}'; exit 0 ;;
-  list)  f=list.ndjson ;;
+  list)  if [ $reset = 1 ]; then f=reset.ndjson; else f=list.ndjson; fi ;;
+  groups) f=groups.ndjson ;;
   check) f=check.ndjson ;;
   slow)  echo '{"type":"hello","api":1,"cmd":"slow","dry_run":false,"repo":"/opt/engine","log":""}'; sleep 30; f=action.ndjson ;;
   capture) if [ $list = 1 ]; then f=capture-list.ndjson; else f=action.ndjson; fi ;;

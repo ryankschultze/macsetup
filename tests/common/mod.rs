@@ -68,3 +68,11 @@ pub fn run_next(app: &mut App, fixture: &str) -> u64 {
     });
     id
 }
+
+/// A dashboard on the Profiles tab: core, group-a and group-b saved, group-c not.
+pub fn profiles() -> App {
+    let mut app = connected();
+    load(&mut app.model, JobKind::List, "list-profiles.ndjson");
+    app.tab = macsetup::app::Tab::Profiles;
+    app
+}

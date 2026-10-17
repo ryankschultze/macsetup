@@ -7,8 +7,8 @@ driving an engine that speaks the [macsetup protocol](docs/contract.md).
 The dashboard holds no package lists or settings of its own. It reads them from the engine
 repo on your Mac at run time, and it makes no network calls.
 
-> Status: v0.2. Packages, untracked installs and differing dotfiles, with actions on each.
-> Editing groups and profiles arrives in a later version.
+> Status: v0.2. Packages, untracked installs and differing dotfiles, with actions on each,
+> and the group selection (Profiles).
 
 ## Install
 
@@ -25,7 +25,7 @@ check in the background.
 
 | Key | Does |
 |---|---|
-| `1`–`5`, Tab | Overview, Packages, Capture, Dotfiles, Activity |
+| `1`–`6`, Tab | Overview, Packages, Capture, Dotfiles, Activity, Profiles |
 | ↑ ↓, `j` `k` | move (arrows only on Dotfiles, where `k` means keep) |
 | Enter, Space, → ← | open or close a group (Packages) |
 | `f` | filter by state: missing, outside Homebrew, wrong app, unknown, installed |
@@ -33,7 +33,7 @@ check in the background.
 | `r` | reload the package list and untracked installs |
 | `c` | run a check |
 | `?` | help and the state legend |
-| `q`, Esc | quit (Esc first clears a filter) |
+| `q`, Esc | quit (Esc first clears a filter, or discards unsaved group changes) |
 
 Actions. Each one opens a dialog showing the exact `setup` command it will run; press Enter
 to run it, `D` to see a dry run first, or Esc to cancel.
@@ -48,6 +48,9 @@ to run it, `D` to see a dry run first, or Esc to cancel.
 | Dotfiles | `k` `t` `l` `m` | `setup review --file PATH --action keep\|take\|later\|merge` |
 | Overview | `l` | open the latest check log |
 | Activity | `x` / `y` | cancel the running job / copy its log path |
+| Profiles | Space / `p` | toggle a group / apply a profile's groups (nothing runs until you save) |
+| Profiles | Enter | `setup groups --set GROUP,…` (in the engine's group order; the always-on group is kept) |
+| Profiles | `R` | `setup list --reset`: forget every saved answer (no dry run) |
 
 Edits to group package lists always pass `--commit`: the engine commits the files it changed
 (never pushes) and leaves an edit uncommitted if that file already had changes.
@@ -56,6 +59,10 @@ Most actions run in the background and report on the Activity tab and the status
 Installs and uninstalls that include a cask, App Store app or vendor app, and dotfile merges,
 run in the terminal itself so you can answer password prompts or use the merge tool; press any
 key afterwards to return to the dashboard.
+
+On Profiles, ← → switch between the group list and the profile list. `+` and `−` mark unsaved
+changes, `= current` marks the profile that matches the selection, and the Overview dims
+groups outside a saved selection.
 
 Every state has a symbol as well as a colour (`✓` installed, `✗` missing, `◆` outside
 Homebrew, `!` wrong app, `?` unknown). Set `NO_COLOR=1` to turn colour off.

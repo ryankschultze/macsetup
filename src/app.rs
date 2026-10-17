@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::action::{Action, ReviewChoice};
-use crate::activity::Activity;
+use crate::activity::{Activity, Outcome};
 use crate::config::{self, Source};
 use crate::engine::{Envelope, Msg};
 use crate::events::{DotfileState, Item, ItemState, Status};
@@ -21,15 +21,17 @@ pub enum Tab {
     Capture,
     Dotfiles,
     Activity,
+    Profiles,
 }
 
 impl Tab {
-    pub const ALL: [Tab; 5] = [
+    pub const ALL: [Tab; 6] = [
         Tab::Overview,
         Tab::Packages,
         Tab::Capture,
         Tab::Dotfiles,
         Tab::Activity,
+        Tab::Profiles,
     ];
 
     pub fn title(self) -> &'static str {
@@ -39,6 +41,7 @@ impl Tab {
             Tab::Capture => "Capture",
             Tab::Dotfiles => "Dotfiles",
             Tab::Activity => "Activity",
+            Tab::Profiles => "Profiles",
         }
     }
 
@@ -50,6 +53,16 @@ impl Tab {
         let n = Tab::ALL.len() as isize;
         Tab::ALL[((self.index() as isize + by).rem_euclid(n)) as usize]
     }
+}
+
+/// The group the engine always installs: shown on, never toggled.
+pub const ALWAYS_ON: &str = "core";
+
+/// Which list has the cursor on the Profiles tab.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfilesFocus {
+    Groups,
+    Profiles,
 }
 
 /// The first-run screen: no engine found, offer to save one in config.toml.
@@ -221,6 +234,12 @@ pub struct App {
     pub act_sel: Option<usize>,
     /// Lines scrolled up from the end of the selected job.
     pub act_scroll: usize,
+    // Profiles tab
+    pub prof_focus: ProfilesFocus,
+    pub grp_sel: usize,
+    pub prof_sel: usize,
+    /// An unsaved group selection; None while it matches the saved one.
+    pub pending_groups: Option<BTreeSet<String>>,
 }
 
 pub const SPINNER: [&str; 10] = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -261,6 +280,10 @@ impl App {
             cap_sel: 0,
             act_sel: None,
             act_scroll: 0,
+            prof_focus: ProfilesFocus::Groups,
+            grp_sel: 0,
+            prof_sel: 0,
+            pending_groups: None,
         }
     }
 
@@ -388,10 +411,32 @@ impl App {
                     && !job.dry_run
                 {
                     let log = self.activity.get(env.job);
+                    let quiet = log.is_some_and(|l| {
+                        matches!(
+                            l.outcome,
+                            Some(Outcome::Done {
+                                ok: 0,
+                                skip: 0,
+                                warn: 0,
+                                manual: 0,
+                                fail: 0
+                            })
+                        )
+                    });
+                    let succeeded = result.is_ok()
+                        && log.is_some_and(|l| {
+                            matches!(l.outcome, Some(Outcome::Done { fail: 0, .. }))
+                        });
                     self.toast = log.map(|l| Toast {
-                        text: format!("{}: {}", l.title, l.summary()),
+                        text: match action.done_text() {
+                            Some(t) if quiet => format!("{}: {t}", l.title),
+                            _ => format!("{}: {}", l.title, l.summary()),
+                        },
                         status: l.status(),
                     });
+                    if succeeded && matches!(action, Action::SetGroups { .. } | Action::Reset) {
+                        self.pending_groups = None;
+                    }
                     for k in action.refresh() {
                         self.enqueue(k);
                     }
@@ -471,6 +516,13 @@ impl App {
         self.dot_sel = self.dot_sel.min(d.saturating_sub(1));
         let c = self.model.untracked.len();
         self.cap_sel = self.cap_sel.min(c.saturating_sub(1));
+        let g = self.model.group_order().len();
+        self.grp_sel = self.grp_sel.min(g.saturating_sub(1));
+        let p = self.model.profiles.len();
+        self.prof_sel = self.prof_sel.min(p.saturating_sub(1));
+        if self.pending_groups.as_ref() == Some(&self.saved_groups()) {
+            self.pending_groups = None;
+        }
     }
 
     /// The Activity tab's selected job index.
@@ -492,15 +544,19 @@ impl App {
             }
             return;
         }
-        let len = match self.tab {
-            Tab::Packages => self.package_rows().len(),
-            Tab::Dotfiles => self.model.dotfiles.len(),
-            Tab::Capture => self.model.untracked.len(),
-            Tab::Overview | Tab::Activity => return,
+        let len = match (self.tab, self.prof_focus) {
+            (Tab::Packages, _) => self.package_rows().len(),
+            (Tab::Dotfiles, _) => self.model.dotfiles.len(),
+            (Tab::Capture, _) => self.model.untracked.len(),
+            (Tab::Profiles, ProfilesFocus::Groups) => self.model.group_order().len(),
+            (Tab::Profiles, ProfilesFocus::Profiles) => self.model.profiles.len(),
+            (Tab::Overview | Tab::Activity, _) => return,
         };
-        let sel = match self.tab {
-            Tab::Packages => &mut self.pkg_sel,
-            Tab::Capture => &mut self.cap_sel,
+        let sel = match (self.tab, self.prof_focus) {
+            (Tab::Packages, _) => &mut self.pkg_sel,
+            (Tab::Capture, _) => &mut self.cap_sel,
+            (Tab::Profiles, ProfilesFocus::Groups) => &mut self.grp_sel,
+            (Tab::Profiles, ProfilesFocus::Profiles) => &mut self.prof_sel,
             _ => &mut self.dot_sel,
         };
         if len == 0 {
@@ -631,12 +687,15 @@ impl App {
                     self.state_filter = None;
                     self.text_filter.clear();
                     self.pkg_sel = 0;
+                } else if self.tab == Tab::Profiles && self.pending_groups.is_some() {
+                    self.pending_groups = None;
+                    self.say("Unsaved group changes discarded.", Status::Skip);
                 } else {
                     self.quit = true;
                 }
             }
             KeyCode::Char('?') => self.show_help = true,
-            KeyCode::Char(c @ '1'..='5') => self.tab = Tab::ALL[(c as usize) - ('1' as usize)],
+            KeyCode::Char(c @ '1'..='6') => self.tab = Tab::ALL[(c as usize) - ('1' as usize)],
             KeyCode::Tab => self.tab = self.tab.step(1),
             KeyCode::BackTab => self.tab = self.tab.step(-1),
             // On Dotfiles, k means keep: move with the arrows there.
@@ -683,6 +742,7 @@ impl App {
                     KeyCode::Char('y') => self.copy_log(),
                     _ => {}
                 },
+                Tab::Profiles => self.profiles_key(key),
             },
         }
     }
@@ -714,6 +774,126 @@ impl App {
                     self.say("Select a package to move.", Status::Warn);
                 }
             }
+            _ => {}
+        }
+    }
+
+    // --- Profiles -----------------------------------------------------------
+
+    /// The groups saved in the engine's state (`selected` in `setup list`).
+    pub fn saved_groups(&self) -> BTreeSet<String> {
+        self.model
+            .groups
+            .iter()
+            .filter(|g| g.selected)
+            .map(|g| g.id.clone())
+            .collect()
+    }
+
+    /// What would be saved now: the pending selection, else the saved one.
+    pub fn effective_groups(&self) -> BTreeSet<String> {
+        self.pending_groups
+            .clone()
+            .unwrap_or_else(|| self.saved_groups())
+    }
+
+    /// The engine always installs the always-on group, when it has one.
+    fn with_always_on(&self, mut set: BTreeSet<String>) -> BTreeSet<String> {
+        if self.model.group(ALWAYS_ON).is_some() {
+            set.insert(ALWAYS_ON.to_string());
+        }
+        set
+    }
+
+    /// Ids in groups.tsv order (the order of the engine's group events).
+    pub fn in_group_order(&self, set: &BTreeSet<String>) -> Vec<String> {
+        self.model
+            .group_order()
+            .into_iter()
+            .filter(|g| set.contains(*g))
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn set_pending(&mut self, set: BTreeSet<String>) {
+        let set = self.with_always_on(set);
+        self.pending_groups = (set != self.saved_groups()).then_some(set);
+    }
+
+    /// Groups the pending selection adds and removes, in groups.tsv order.
+    pub fn pending_diff(&self) -> (Vec<String>, Vec<String>) {
+        let Some(pending) = &self.pending_groups else {
+            return (vec![], vec![]);
+        };
+        let saved = self.saved_groups();
+        let added = self.in_group_order(&pending.difference(&saved).cloned().collect());
+        let removed = self.in_group_order(&saved.difference(pending).cloned().collect());
+        (added, removed)
+    }
+
+    /// Profiles whose groups (plus the always-on group) are the current selection.
+    pub fn profile_matches(&self, id: &str) -> bool {
+        let current = self.effective_groups();
+        !current.is_empty()
+            && self.model.profiles.iter().any(|p| {
+                p.id == id && self.with_always_on(p.groups.iter().cloned().collect()) == current
+            })
+    }
+
+    fn toggle_group(&mut self) {
+        let Some(id) = self
+            .model
+            .group_order()
+            .get(self.grp_sel)
+            .map(|s| s.to_string())
+        else {
+            return;
+        };
+        if id == ALWAYS_ON {
+            self.say(format!("{ALWAYS_ON} is always installed."), Status::Skip);
+            return;
+        }
+        let mut set = self.effective_groups();
+        if !set.remove(&id) {
+            set.insert(id);
+        }
+        self.set_pending(set);
+    }
+
+    fn apply_profile(&mut self) {
+        match self.model.profiles.get(self.prof_sel) {
+            Some(p) => {
+                let set = p.groups.iter().cloned().collect();
+                self.set_pending(set);
+            }
+            None => self.say("No profiles to apply.", Status::Skip),
+        }
+    }
+
+    fn save_groups(&mut self) {
+        match &self.pending_groups {
+            Some(set) => {
+                let groups = self.in_group_order(set);
+                self.confirm(Action::SetGroups { groups });
+            }
+            None => self.say(
+                "No unsaved changes: toggle groups with Space or apply a profile with p.",
+                Status::Skip,
+            ),
+        }
+    }
+
+    fn profiles_key(&mut self, key: KeyEvent) {
+        match key.code {
+            KeyCode::Left | KeyCode::Char('h') => self.prof_focus = ProfilesFocus::Groups,
+            KeyCode::Right | KeyCode::Char('l') => self.prof_focus = ProfilesFocus::Profiles,
+            KeyCode::Char(' ') => match self.prof_focus {
+                ProfilesFocus::Groups => self.toggle_group(),
+                ProfilesFocus::Profiles => self.apply_profile(),
+            },
+            KeyCode::Char('p') => self.apply_profile(),
+            KeyCode::Enter | KeyCode::Char('s') => self.save_groups(),
+            KeyCode::Char('R') => self.confirm(Action::Reset),
             _ => {}
         }
     }

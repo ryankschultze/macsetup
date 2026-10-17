@@ -2,7 +2,7 @@
 source: tests/render.rs
 expression: frame
 ---
-" macsetup   1 Overview   2 Packages   3 Capture   4 Dotfiles   5 Activity                    ? help "
+" macsetup   1 Overview   2 Packages   3 Capture   4 Dotfiles   5 Activity   6 Profiles       ? help "
 "┌ Packages ────────────────────────────────────────────────┐┌ Details ─────────────────────────────┐"
 "│▾ Group A  6  ✗ 2  ! 1                                    ││pkg-one                               │"
 "│    ✓ pkg-one  brew                                       ││✓ installed                           │"

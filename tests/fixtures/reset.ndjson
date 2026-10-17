@@ -1,0 +1,3 @@
+{"type":"hello","api":1,"cmd":"list","dry_run":false,"repo":"/opt/engine","log":"/tmp/engine-logs/20260101-120006-list.log"}
+{"type":"log","level":"info","text":"State cleared (/tmp/engine-state/state)"}
+{"type":"done","ok":0,"skip":0,"warn":0,"manual":0,"fail":0,"exit":0,"log":"/tmp/engine-logs/20260101-120006-list.log"}
