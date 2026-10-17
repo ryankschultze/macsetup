@@ -4,13 +4,17 @@ use std::collections::BTreeMap;
 
 use crate::events::{
     Done, Dotfile, Event, Group, Hello, Item, ItemState, Log, Needs, Profile, Status, StepResult,
+    Untracked,
 };
 
-/// The engine commands the dashboard runs.
+/// The engine commands the dashboard runs. `Action` jobs carry their
+/// arguments separately (see [`crate::action::Action`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum JobKind {
     List,
     Check,
+    CaptureList,
+    Action,
 }
 
 impl JobKind {
@@ -18,6 +22,8 @@ impl JobKind {
         match self {
             JobKind::List => &["list"],
             JobKind::Check => &["check"],
+            JobKind::CaptureList => &["capture", "--list"],
+            JobKind::Action => &[],
         }
     }
 
@@ -25,6 +31,8 @@ impl JobKind {
         match self {
             JobKind::List => "list",
             JobKind::Check => "check",
+            JobKind::CaptureList => "capture --list",
+            JobKind::Action => "action",
         }
     }
 }
@@ -108,8 +116,12 @@ pub struct Model {
     pub dotfiles: Vec<Dotfile>,
     pub needs: Vec<Needs>,
     pub logs: Vec<Log>,
+    pub untracked: Vec<Untracked>,
     pub list: JobRecord,
     pub check: JobRecord,
+    pub capture: JobRecord,
+    /// The last action's record (its events also go to Activity).
+    pub action: JobRecord,
 }
 
 impl Model {
@@ -129,6 +141,11 @@ impl Model {
                 self.logs.clear();
                 self.check = JobRecord::default();
             }
+            JobKind::CaptureList => {
+                self.untracked.clear();
+                self.capture = JobRecord::default();
+            }
+            JobKind::Action => self.action = JobRecord::default(),
         }
     }
 
@@ -136,10 +153,21 @@ impl Model {
         match kind {
             JobKind::List => &mut self.list,
             JobKind::Check => &mut self.check,
+            JobKind::CaptureList => &mut self.capture,
+            JobKind::Action => &mut self.action,
         }
     }
 
     pub fn apply(&mut self, kind: JobKind, event: Event) {
+        // An action's results describe that action, not the last check.
+        if kind == JobKind::Action {
+            match event {
+                Event::Hello(h) => self.action.hello = Some(h),
+                Event::Done(d) => self.action.done = Some(d),
+                _ => {}
+            }
+            return;
+        }
         match event {
             Event::Hello(h) => self.record(kind).hello = Some(h),
             Event::Done(d) => self.record(kind).done = Some(d),
@@ -150,7 +178,8 @@ impl Model {
             Event::Dotfile(d) => self.dotfiles.push(d),
             Event::Needs(n) => self.needs.push(n),
             Event::Log(l) => self.logs.push(l),
-            Event::Stage(_) | Event::Untracked(_) | Event::Other => {}
+            Event::Untracked(u) => self.untracked.push(u),
+            Event::Stage(_) | Event::Other => {}
         }
     }
 

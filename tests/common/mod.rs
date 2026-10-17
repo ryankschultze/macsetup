@@ -45,5 +45,26 @@ pub fn loaded() -> App {
     let mut app = connected();
     load(&mut app.model, JobKind::List, "list.ndjson");
     load(&mut app.model, JobKind::Check, "check.ndjson");
+    load(&mut app.model, JobKind::CaptureList, "capture-list.ndjson");
     app
+}
+
+/// Start the next queued job and feed it a fixture, then finish it.
+pub fn run_next(app: &mut App, fixture: &str) -> u64 {
+    use macsetup::engine::{Envelope, Msg};
+    let (id, kind) = app.take_next_job().expect("a queued job");
+    let text = std::fs::read_to_string(fixture_path(fixture)).unwrap();
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        app.on_engine(Envelope {
+            job: id,
+            kind,
+            msg: Msg::Event(parse_line(line).unwrap()),
+        });
+    }
+    app.on_engine(Envelope {
+        job: id,
+        kind,
+        msg: Msg::Finished(Ok(())),
+    });
+    id
 }

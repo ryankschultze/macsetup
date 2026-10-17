@@ -1,9 +1,25 @@
 #!/bin/bash
 # Stand-in engine for tests: prints a hand-written fixture for each command.
+# With --events FILE the events go to FILE instead of stdout; --dry-run picks
+# the dry-run fixture for actions. `slow` waits (for cancel tests).
 fixtures="$(cd "$(dirname "$0")/../fixtures" && pwd)"
-case "${1:-}" in
-  api)   echo '{"api":1}' ;;
-  list)  cat "$fixtures/list.ndjson" ;;
-  check) cat "$fixtures/check.ndjson" ;;
-  *)     echo "fake setup: unknown command '${1:-}'" >&2; exit 2 ;;
+cmd="" events="" dry=0 list=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --events) events="$2"; shift ;;
+    --dry-run) dry=1 ;;
+    --list) list=1 ;;
+    api|list|check|capture|install|uninstall|move|drop|review|slow) [ -z "$cmd" ] && cmd="$1" ;;
+  esac
+  shift
+done
+case "$cmd" in
+  api)   echo '{"api":1}'; exit 0 ;;
+  list)  f=list.ndjson ;;
+  check) f=check.ndjson ;;
+  slow)  echo '{"type":"hello","api":1,"cmd":"slow","dry_run":false,"repo":"/opt/engine","log":""}'; sleep 30; f=action.ndjson ;;
+  capture) if [ $list = 1 ]; then f=capture-list.ndjson; else f=action.ndjson; fi ;;
+  install|uninstall|move|drop|review) if [ $dry = 1 ]; then f=action-dry.ndjson; else f=action.ndjson; fi ;;
+  *)     echo "fake setup: unknown command '$cmd'" >&2; exit 2 ;;
 esac
+if [ -n "$events" ]; then cat "$fixtures/$f" >"$events"; else cat "$fixtures/$f"; fi

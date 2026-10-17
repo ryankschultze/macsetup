@@ -2,7 +2,7 @@
 source: tests/render.rs
 expression: "render(&app, 60, 24)"
 ---
-" macsetup   1 Overview   2 Packages   3 Dotfiles     ? help "
+" 1   2 Packages   3   4   5                          ? help "
 "┌ Packages ────────────────────────────────────────────────┐"
 "│▸ Group A  6  ✗ 2  ! 1                                    │"
 "│▾ Group B  5  ✗ 2                                         │"

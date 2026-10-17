@@ -6,9 +6,10 @@ use std::process::ExitCode;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::time::Duration;
 
-use macsetup::app::{App, FirstRun, Screen, Tab};
+use macsetup::app::{App, Effect, FirstRun, Screen, Tab};
 use macsetup::config::{self, FindError, Inputs, Source};
-use macsetup::engine::{self, Envelope};
+use macsetup::engine::{self, Envelope, Msg};
+use macsetup::model::JobError;
 use macsetup::model::JobKind;
 use macsetup::theme::Theme;
 use macsetup::ui;
@@ -169,8 +170,17 @@ fn run(
             dirty = true;
         }
         if let (Some((id, kind)), Some(repo)) = (app.take_next_job(), app.repo.clone()) {
-            engine::spawn(&repo, kind, id, tx.clone());
+            let job = app.running_job.clone().expect("a job was just started");
+            if job.attached() {
+                attached(terminal, app, &repo, id, kind, &job.args())?;
+            } else {
+                let pid = engine::spawn_args(&repo, &job.args(), kind, id, tx.clone());
+                app.started(pid);
+            }
             dirty = true;
+        }
+        for effect in std::mem::take(&mut app.effects) {
+            do_effect(effect);
         }
         while let Ok(env) = rx.try_recv() {
             app.on_engine(env);
@@ -199,7 +209,87 @@ fn run(
     }
 }
 
-/// Run `list` and `check` to completion and write each tab's text render.
+/// Hand the terminal to `setup` for an action that may prompt (a password,
+/// a merge tool), then come back and replay what it reported.
+fn attached(
+    terminal: &mut DefaultTerminal,
+    app: &mut App,
+    repo: &Path,
+    id: u64,
+    kind: JobKind,
+    args: &[String],
+) -> std::io::Result<()> {
+    use std::io::Write;
+    ratatui::restore();
+    let events = std::env::temp_dir().join(format!(
+        "macsetup-events-{}-{id}.ndjson",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_file(&events);
+    println!("\n$ setup {}\n", args.join(" "));
+    let status = engine::run_attached(repo, args, &events);
+    print!("\nPress any key to return to the dashboard");
+    std::io::stdout().flush()?;
+    ratatui::crossterm::terminal::enable_raw_mode()?;
+    loop {
+        if let Event::Key(k) = event::read()?
+            && k.kind == KeyEventKind::Press
+        {
+            break;
+        }
+    }
+    ratatui::crossterm::terminal::disable_raw_mode()?;
+    *terminal = ratatui::init();
+    terminal.clear()?;
+
+    let (parsed, bad) = engine::read_events(&events);
+    let _ = std::fs::remove_file(&events);
+    let saw_done = parsed
+        .iter()
+        .any(|e| matches!(e, macsetup::events::Event::Done(_)));
+    let send = |app: &mut App, msg| app.on_engine(Envelope { job: id, kind, msg });
+    for e in parsed {
+        send(app, Msg::Event(e));
+    }
+    for l in bad {
+        send(app, Msg::BadLine(l));
+    }
+    let result = match status {
+        Err(e) => Err(JobError::Spawn(e.to_string())),
+        Ok(_) if saw_done => Ok(()),
+        Ok(st) => Err(JobError::NoDone {
+            exit: st.code(),
+            stderr: String::new(),
+        }),
+    };
+    send(app, Msg::Finished(result));
+    Ok(())
+}
+
+fn do_effect(effect: Effect) {
+    use std::process::{Command, Stdio};
+    match effect {
+        Effect::Kill(pid) => engine::cancel(pid),
+        Effect::Open(path) => {
+            let _ = Command::new("open")
+                .arg(path)
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn();
+        }
+        Effect::Copy(text) => {
+            if let Ok(mut child) = Command::new("pbcopy").stdin(Stdio::piped()).spawn() {
+                if let Some(mut stdin) = child.stdin.take() {
+                    use std::io::Write;
+                    let _ = stdin.write_all(text.as_bytes());
+                }
+                let _ = child.wait();
+            }
+        }
+    }
+}
+
+/// Run `list`, `capture --list` and `check` to completion and write each tab's text render.
 fn snapshot(inputs: &Inputs, dir: &Path, (w, h): (u16, u16)) -> Result<(), String> {
     use ratatui::{Terminal, backend::TestBackend};
     let mut app = App::new(Screen::Main, Theme::plain(), inputs.home.clone());
@@ -207,7 +297,7 @@ fn snapshot(inputs: &Inputs, dir: &Path, (w, h): (u16, u16)) -> Result<(), Strin
     if let Screen::Main = app.screen {
         app.queue.clear();
         let repo = app.repo.clone().expect("connected");
-        for kind in [JobKind::List, JobKind::Check] {
+        for kind in [JobKind::List, JobKind::CaptureList, JobKind::Check] {
             if let Err(e) = engine::run_blocking(&repo, kind, &mut app.model) {
                 app.last_error = Some(format!("{}: {e}", kind.label()));
             }

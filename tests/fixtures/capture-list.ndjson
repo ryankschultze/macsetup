@@ -1,0 +1,5 @@
+{"type":"hello","api":1,"cmd":"capture","dry_run":false,"repo":"/opt/engine","log":"/tmp/engine-logs/20260101-120002-capture.log"}
+{"type":"untracked","id":"brew:extra-tool","kind":"brew","name":"extra-tool","hint":""}
+{"type":"untracked","id":"cask:extra-app","kind":"cask","name":"extra-app","hint":""}
+{"type":"untracked","id":"npm:extra-cli","kind":"npm","name":"extra-cli","hint":""}
+{"type":"done","ok":0,"skip":0,"warn":0,"manual":0,"fail":0,"exit":0,"log":"/tmp/engine-logs/20260101-120002-capture.log"}

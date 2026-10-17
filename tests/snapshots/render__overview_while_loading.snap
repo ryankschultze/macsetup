@@ -2,7 +2,7 @@
 source: tests/render.rs
 expression: "render(&app, 100, 30)"
 ---
-" macsetup   1 Overview   2 Packages   3 Dotfiles                                             ? help "
+" macsetup   1 Overview   2 Packages   3 Capture   4 Dotfiles   5 Activity                    ? help "
 "┌ Groups ──────────────────────────────────────────────────────────────────────────────────────────┐"
 "│Loading the package list…                                                                         │"
 "│                                                                                                  │"
@@ -31,4 +31,4 @@ expression: "render(&app, 100, 30)"
 "│Checking…                                                                                         │"
 "│                                                                                                  │"
 "└──────────────────────────────────────────────────────────────────────────────────────────────────┘"
-" engine ~/src/engine  API 1  ⠋ list…                                                                "
+" engine ~/src/engine  API 1  ⠋ Load the package list…                                               "

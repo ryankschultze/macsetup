@@ -2,6 +2,8 @@
 //! thin shell around this library so the state and rendering can be tested
 //! without a terminal.
 
+pub mod action;
+pub mod activity;
 pub mod app;
 pub mod config;
 pub mod engine;
