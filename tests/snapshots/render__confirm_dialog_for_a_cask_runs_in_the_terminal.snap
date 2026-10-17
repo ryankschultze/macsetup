@@ -2,7 +2,7 @@
 source: tests/render.rs
 expression: "render(&app, 80, 24)"
 ---
-" 1 Overview   2 Packages   3 Capture   4 Dotfiles   5 Activity           ? help "
+" 1   2 Packages   3   4   5   6                                          ? help "
 "┌ Packages ────────────────────────────────────────────────────────────────────┐"
 "│▾ Group A  6  ✗ 2  ! 1                                                        │"
 "│    ✓ pkg-one  brew                                                           │"

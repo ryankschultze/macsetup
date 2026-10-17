@@ -2,7 +2,7 @@
 source: tests/render.rs
 expression: "render(&app, 60, 24)"
 ---
-" 1   2   3   4   5 Activity                          ? help "
+" 1   2   3   4   5 Activity   6                      ? help "
 "┌ Jobs this session ───────────────────────────────────────┐"
 "│✓ Uninstall and drop brew:pkg-one                         │"
 "│                                                          │"

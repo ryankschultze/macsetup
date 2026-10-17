@@ -270,3 +270,38 @@ fn toast_after_an_action() {
     assert!(frame.contains("✓ Uninstall and drop brew:pkg-one: 3 ok"));
     insta::assert_snapshot!(frame);
 }
+
+#[test]
+fn profiles_loaded() {
+    insta::assert_snapshot!(render(&common::profiles(), 100, 30));
+}
+
+#[test]
+fn profiles_with_pending_changes() {
+    let mut app = common::profiles();
+    app.pending_groups = Some(
+        ["core", "group-a", "group-c"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect(),
+    );
+    app.grp_sel = 3;
+    insta::assert_snapshot!(render(&app, 100, 30));
+}
+
+#[test]
+fn profiles_reset_dialog() {
+    let mut app = common::profiles();
+    app.on_key(ratatui::crossterm::event::KeyEvent::new(
+        ratatui::crossterm::event::KeyCode::Char('R'),
+        ratatui::crossterm::event::KeyModifiers::NONE,
+    ));
+    insta::assert_snapshot!(render(&app, 100, 30));
+}
+
+#[test]
+fn profiles_narrow() {
+    let mut app = common::profiles();
+    app.prof_focus = macsetup::app::ProfilesFocus::Profiles;
+    insta::assert_snapshot!(render(&app, 60, 24));
+}

@@ -2,12 +2,12 @@
 source: tests/render.rs
 expression: "render(&common::loaded(), 100, 30)"
 ---
-" macsetup   1 Overview   2 Packages   3 Capture   4 Dotfiles   5 Activity                    ? help "
+" macsetup   1 Overview   2 Packages   3 Capture   4 Dotfiles   5 Activity   6 Profiles       ? help "
 "┌ Groups · 11 packages, 4 missing ─────────────────────────────────────────────────────────────────┐"
 "│Group                        ✓ installed  ✗ missing  ◆ outside  ! wrong app  ? unknown  check     │"
 "│Group A                      1            2          1          1            1          ! warning │"
 "│Group B                      3            2          ·          ·            ·          ✓ ok      │"
-"│Group C                      ·            ·          ·          ·            ·          –         │"
+"│Group C · not selected       ·            ·          ·          ·            ·          –         │"
 "│                                                                                                  │"
 "│                                                                                                  │"
 "│                                                                                                  │"

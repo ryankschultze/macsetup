@@ -86,3 +86,57 @@ fn add_then_uninstall_and_drop_cowsay() {
         "dropped from the repo"
     );
 }
+
+/// Saving groups from the Profiles tab writes the same `groups=` line the
+/// wizard writes for the same selection. Uses a scratch state folder, never
+/// the real one:
+///
+/// ```sh
+/// MACSETUP_E2E_REPO=/path/to/throwaway/engine MACSETUP_E2E_STATE=/empty/scratch/dir \
+///   cargo test --test e2e saving_groups -- --ignored --nocapture
+/// ```
+#[test]
+#[ignore = "runs the real engine: run by hand against a throwaway engine copy"]
+fn saving_groups_matches_the_wizard() {
+    use macsetup::app::{App, Screen};
+    use macsetup::theme::Theme;
+    use std::collections::BTreeSet;
+
+    let state = PathBuf::from(std::env::var("MACSETUP_E2E_STATE").expect("set MACSETUP_E2E_STATE"));
+    let (dash, wiz) = (state.join("dashboard"), state.join("wizard"));
+    // SAFETY: run by name and alone; nothing else in this process reads the
+    // environment while it changes. The engine children inherit it.
+    unsafe { std::env::set_var("XDG_STATE_HOME", &dash) };
+
+    // The groups as the Profiles tab would save them: picked out of order.
+    let mut app = App::new(Screen::Main, Theme::plain(), None);
+    engine::run_blocking(&repo(), JobKind::List, &mut app.model).unwrap();
+    let picked: BTreeSet<String> = ["ai", "cli-extras", "core"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    app.pending_groups = Some(picked.clone());
+    let groups = app.in_group_order(&picked);
+    let saved = run(Action::SetGroups { groups });
+    assert!(ok(&saved, "groups"), "{saved:?}");
+
+    // The wizard, same selection given out of order, running no stage at all.
+    let status = std::process::Command::new(repo().join("setup"))
+        .args(["--yes", "--groups", "ai,cli-extras", "--only", "none"])
+        .env("XDG_STATE_HOME", &wiz)
+        .stdout(std::process::Stdio::null())
+        .status()
+        .unwrap();
+    assert!(status.success());
+
+    let line = |dir: &PathBuf| {
+        std::fs::read_to_string(dir.join("macsetup/state"))
+            .unwrap()
+            .lines()
+            .find(|l| l.starts_with("groups="))
+            .map(str::to_string)
+            .expect("a groups= line")
+    };
+    println!("dashboard: {}\nwizard:    {}", line(&dash), line(&wiz));
+    assert_eq!(line(&dash), line(&wiz));
+}

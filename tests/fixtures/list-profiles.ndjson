@@ -1,0 +1,14 @@
+{"type":"hello","api":1,"cmd":"list","dry_run":false,"repo":"/opt/engine","log":"/tmp/engine-logs/20260101-120000-list.log"}
+{"type":"profile","id":"small","groups":["core","group-a","group-b"]}
+{"type":"profile","id":"full","groups":["core","group-a","group-b","group-c"]}
+{"type":"profile","id":"bare","groups":["group-c","group-a"]}
+{"type":"group","id":"core","title":"Core","desc":"the basics","selected":true}
+{"type":"group","id":"group-a","title":"Group A","desc":"pkg-one, pkg-two","selected":true}
+{"type":"group","id":"group-b","title":"Group B","desc":"language tools","selected":true}
+{"type":"group","id":"group-c","title":"Group C","desc":"apps","selected":false}
+{"type":"item","id":"brew:pkg-base","kind":"brew","name":"pkg-base","group":"core","state":"installed","desc":"A base tool","meta":{}}
+{"type":"item","id":"brew:pkg-one","kind":"brew","name":"pkg-one","group":"group-a","state":"installed","desc":"An example command-line tool","meta":{}}
+{"type":"item","id":"brew:pkg-two","kind":"brew","name":"pkg-two","group":"group-a","state":"missing","desc":"Another example tool","meta":{}}
+{"type":"item","id":"brew:tool-go","kind":"brew","name":"tool-go","group":"group-b","state":"installed","desc":"","meta":{}}
+{"type":"item","id":"cask:app-three","kind":"cask","name":"app-three","group":"group-c","state":"missing","desc":"","meta":{"url":"https://example.com/app-three","app":"App Three.app","bundle":"com.example.app-three"}}
+{"type":"done","ok":0,"skip":0,"warn":0,"manual":0,"fail":0,"exit":0,"log":"/tmp/engine-logs/20260101-120000-list.log"}

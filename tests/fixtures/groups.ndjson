@@ -1,0 +1,5 @@
+{"type":"hello","api":1,"cmd":"groups","dry_run":false,"repo":"/opt/engine","log":"/tmp/engine-logs/20260101-120005-groups.log"}
+{"type":"stage","id":"groups","title":"Groups","n":1,"total":1}
+{"type":"log","level":"info","text":"Groups: core group-a group-b group-c"}
+{"type":"result","status":"ok","stage":"groups","id":"groups","item":"groups","detail":"saved: core group-a group-b group-c"}
+{"type":"done","ok":1,"skip":0,"warn":0,"manual":0,"fail":0,"exit":0,"log":"/tmp/engine-logs/20260101-120005-groups.log"}

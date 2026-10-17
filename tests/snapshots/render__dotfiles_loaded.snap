@@ -2,7 +2,7 @@
 source: tests/render.rs
 expression: "render(&tab(common::loaded(), Tab::Dotfiles), 100, 30)"
 ---
-" macsetup   1 Overview   2 Packages   3 Capture   4 Dotfiles   5 Activity                    ? help "
+" macsetup   1 Overview   2 Packages   3 Capture   4 Dotfiles   5 Activity   6 Profiles       ? help "
 "┌ Dotfiles · 2 ────────────────────────────────────────────┐┌ Details ─────────────────────────────┐"
 "│≠ differs ~/.example.conf                                 ││~/.example.conf                       │"
 "│+ pending ~/.example-rc                                   ││                                      │"

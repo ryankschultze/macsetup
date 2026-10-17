@@ -90,7 +90,10 @@ fn tabs_switch_by_number_and_tab_key() {
     key(&mut app, KeyCode::Tab);
     assert_eq!(app.tab, Tab::Activity);
     key(&mut app, KeyCode::Tab);
+    assert_eq!(app.tab, Tab::Profiles);
+    key(&mut app, KeyCode::Tab);
     assert_eq!(app.tab, Tab::Overview);
+    key(&mut app, KeyCode::BackTab);
     key(&mut app, KeyCode::BackTab);
     key(&mut app, KeyCode::BackTab);
     assert_eq!(app.tab, Tab::Dotfiles);
@@ -386,4 +389,132 @@ fn log_keys_copy_and_open() {
             "/tmp/engine-logs/20260101-120001-check.log".into()
         ))
     );
+}
+
+// --- Profiles ---------------------------------------------------------------
+
+fn set(v: &[&str]) -> std::collections::BTreeSet<String> {
+    v.iter().map(|s| s.to_string()).collect()
+}
+
+#[test]
+fn profiles_start_from_the_saved_selection() {
+    let app = common::profiles();
+    assert_eq!(app.saved_groups(), set(&["core", "group-a", "group-b"]));
+    assert_eq!(app.pending_groups, None);
+    assert!(app.profile_matches("small"));
+    assert!(!app.profile_matches("full"));
+}
+
+#[test]
+fn space_toggles_a_group_and_toggling_back_clears_the_change() {
+    let mut app = common::profiles();
+    app.grp_sel = 3; // group-c
+    key(&mut app, KeyCode::Char(' '));
+    assert_eq!(
+        app.pending_groups,
+        Some(set(&["core", "group-a", "group-b", "group-c"]))
+    );
+    assert_eq!(app.pending_diff(), (vec!["group-c".to_string()], vec![]));
+    assert!(app.profile_matches("full"));
+    key(&mut app, KeyCode::Char(' '));
+    assert_eq!(app.pending_groups, None, "back to the saved selection");
+}
+
+#[test]
+fn core_is_always_on() {
+    let mut app = common::profiles();
+    app.grp_sel = 0; // core
+    key(&mut app, KeyCode::Char(' '));
+    assert_eq!(app.pending_groups, None);
+    assert!(
+        app.toast
+            .as_ref()
+            .unwrap()
+            .text
+            .contains("always installed")
+    );
+    // A profile without core still keeps it.
+    key(&mut app, KeyCode::Right);
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Down); // bare: group-c, group-a
+    key(&mut app, KeyCode::Char('p'));
+    assert_eq!(
+        app.pending_groups,
+        Some(set(&["core", "group-a", "group-c"]))
+    );
+    assert_eq!(
+        app.pending_diff(),
+        (vec!["group-c".to_string()], vec!["group-b".to_string()])
+    );
+}
+
+#[test]
+fn enter_saves_in_groups_tsv_order_and_esc_discards() {
+    let mut app = common::profiles();
+    key(&mut app, KeyCode::Enter);
+    assert!(app.dialog.is_none(), "nothing to save yet");
+    app.prof_focus = macsetup::app::ProfilesFocus::Profiles;
+    app.prof_sel = 2; // bare: listed as group-c, group-a
+    key(&mut app, KeyCode::Char('p'));
+    key(&mut app, KeyCode::Enter);
+    let d = app.dialog.as_ref().expect("a confirm dialog");
+    assert_eq!(
+        d.action,
+        Action::SetGroups {
+            groups: vec!["core".into(), "group-a".into(), "group-c".into()]
+        }
+    );
+    assert_eq!(
+        d.action.command_line(false),
+        "setup groups --set core,group-a,group-c"
+    );
+    key(&mut app, KeyCode::Esc); // closes the dialog
+    assert!(app.dialog.is_none() && app.pending_groups.is_some());
+    key(&mut app, KeyCode::Esc); // discards the changes
+    assert!(app.pending_groups.is_none() && !app.quit);
+    key(&mut app, KeyCode::Esc);
+    assert!(app.quit);
+}
+
+#[test]
+fn saving_refreshes_the_list_and_clears_the_pending_selection() {
+    let mut app = common::profiles();
+    app.grp_sel = 3;
+    key(&mut app, KeyCode::Char(' '));
+    key(&mut app, KeyCode::Enter);
+    key(&mut app, KeyCode::Enter); // run it
+    common::run_next(&mut app, "groups.ndjson");
+    assert_eq!(app.pending_groups, None);
+    assert!(app.queued(JobKind::List));
+    assert!(app.toast.as_ref().unwrap().text.contains("1 ok"));
+}
+
+#[test]
+fn reset_asks_first_never_dry_runs_and_reloads() {
+    let mut app = common::profiles();
+    key(&mut app, KeyCode::Char('R'));
+    assert_eq!(app.dialog.as_ref().unwrap().action, Action::Reset);
+    key(&mut app, KeyCode::Char('D'));
+    assert!(app.queue.is_empty(), "no dry run for a reset");
+    key(&mut app, KeyCode::Enter);
+    common::run_next(&mut app, "reset.ndjson");
+    assert_eq!(
+        app.toast.as_ref().unwrap().text,
+        "Reset saved answers: saved answers cleared"
+    );
+    assert!(app.queued(JobKind::List) && app.queued(JobKind::Check));
+}
+
+#[test]
+fn arrows_move_within_the_focused_list() {
+    let mut app = common::profiles();
+    key(&mut app, KeyCode::Down);
+    key(&mut app, KeyCode::Down);
+    assert_eq!((app.grp_sel, app.prof_sel), (2, 0));
+    key(&mut app, KeyCode::Char('l'));
+    key(&mut app, KeyCode::Down);
+    assert_eq!((app.grp_sel, app.prof_sel), (2, 1));
+    key(&mut app, KeyCode::Char('6'));
+    assert_eq!(app.tab, Tab::Profiles);
 }

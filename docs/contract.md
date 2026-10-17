@@ -75,7 +75,8 @@ Readers ignore unknown fields and unknown event types, and treat an unknown `sta
 | `setup capture --list` | `untracked` events |
 | `setup capture --add brew:pkg-one --to group-a [--commit]` | adds an installed item to a group |
 | `setup review --file ~/.example-rc --action keep\|take\|later\|merge` | one dotfile decision; `merge` needs a terminal (`--events`) |
-| `setup groups --set group-a,group-b` | saves the selected groups |
+| `setup groups --set group-a,group-b` | saves the selected groups (the engine adds its always-on group, `core`, and stores them in its group order); one `result` with id `groups` |
+| `setup list --reset` | forgets every saved answer, then lists; emits no `result` for the reset itself |
 | `setup drop brew:pkg-one [--commit]` | removes an entry from its group; nothing is uninstalled |
 
 `--dry-run` works on every command that changes something.
@@ -83,7 +84,8 @@ Readers ignore unknown fields and unknown event types, and treat an unknown `sta
 The dashboard runs actions with `--json` in the background. Installs and uninstalls that
 include `cask:`, `mas:` or `vendor:` items, and `review --action merge`, run attached to the
 terminal with `--events FILE` instead; the dashboard reads `FILE` afterwards. Group edits
-(`uninstall --drop`, `move`, `drop`, `capture --add`) always pass `--commit`.
+(`uninstall --drop`, `move`, `drop`, `capture --add`) always pass `--commit`. The dashboard
+never dry-runs `--reset`: the engine clears its state before it reads `--dry-run`.
 
 Exit codes: 0 when no `result` has status `fail`, 1 when any does, 2 for bad arguments.
 

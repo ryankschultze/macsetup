@@ -152,3 +152,31 @@ fn a_dry_run_never_takes_the_terminal() {
         "setup --dry-run install --items cask:app-one --json"
     );
 }
+
+#[test]
+fn saving_groups_and_resetting() {
+    let set = Action::SetGroups {
+        groups: ids(&["core", "group-a", "group-c"]),
+    };
+    assert_eq!(
+        argv(&set, false),
+        ["groups", "--set", "core,group-a,group-c"]
+    );
+    assert_eq!(
+        argv(&set, true),
+        ["--dry-run", "groups", "--set", "core,group-a,group-c"]
+    );
+    assert!(set.can_dry_run() && !set.needs_terminal());
+    assert_eq!(set.refresh(), [JobKind::List]);
+
+    // A reset never dry-runs: the engine clears its state before it reads --dry-run.
+    assert_eq!(argv(&Action::Reset, false), ["list", "--reset"]);
+    assert!(!Action::Reset.can_dry_run() && !Action::Reset.needs_terminal());
+    assert_eq!(Action::Reset.refresh(), [JobKind::List, JobKind::Check]);
+    let job = Job {
+        kind: JobKind::Action,
+        action: Some(Action::Reset),
+        dry_run: false,
+    };
+    assert_eq!(job.command(), "setup list --reset --json");
+}

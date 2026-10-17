@@ -25,12 +25,34 @@ impl ReviewChoice {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Action {
-    Install { ids: Vec<String> },
-    Uninstall { ids: Vec<String>, drop: bool },
-    Move { id: String, to: String },
-    Drop { ids: Vec<String> },
-    CaptureAdd { id: String, to: String },
-    Review { file: String, choice: ReviewChoice },
+    Install {
+        ids: Vec<String>,
+    },
+    Uninstall {
+        ids: Vec<String>,
+        drop: bool,
+    },
+    Move {
+        id: String,
+        to: String,
+    },
+    Drop {
+        ids: Vec<String>,
+    },
+    CaptureAdd {
+        id: String,
+        to: String,
+    },
+    Review {
+        file: String,
+        choice: ReviewChoice,
+    },
+    /// Save the group selection (ids in groups.tsv order).
+    SetGroups {
+        groups: Vec<String>,
+    },
+    /// Forget every saved answer, then list again.
+    Reset,
 }
 
 impl Action {
@@ -82,6 +104,15 @@ impl Action {
                 push("--action");
                 push(choice.arg());
             }
+            Action::SetGroups { groups } => {
+                push("groups");
+                push("--set");
+                push(&groups.join(","));
+            }
+            Action::Reset => {
+                push("list");
+                push("--reset");
+            }
         }
         v
     }
@@ -112,19 +143,33 @@ impl Action {
         match self {
             Action::Install { ids } | Action::Uninstall { ids, .. } => ids.iter().any(interactive),
             Action::Review { choice, .. } => *choice == ReviewChoice::Merge,
-            Action::Move { .. } | Action::Drop { .. } | Action::CaptureAdd { .. } => false,
+            Action::Move { .. }
+            | Action::Drop { .. }
+            | Action::CaptureAdd { .. }
+            | Action::SetGroups { .. }
+            | Action::Reset => false,
         }
     }
 
-    /// A merge opens an interactive tool, so it has nothing to preview.
+    /// A merge opens an interactive tool, so it has nothing to preview. A
+    /// reset is never dry-run: the engine clears its state before it looks at
+    /// --dry-run.
     pub fn can_dry_run(&self) -> bool {
         !matches!(
             self,
             Action::Review {
                 choice: ReviewChoice::Merge,
                 ..
-            }
+            } | Action::Reset
         )
+    }
+
+    /// What the toast says when the action reports no results of its own.
+    pub fn done_text(&self) -> Option<&'static str> {
+        match self {
+            Action::Reset => Some("saved answers cleared"),
+            _ => None,
+        }
     }
 
     /// A short title, e.g. "Uninstall brew:jq".
@@ -148,6 +193,8 @@ impl Action {
                 ReviewChoice::Later => format!("Decide on {file} later"),
                 ReviewChoice::Merge => format!("Merge {file}"),
             },
+            Action::SetGroups { .. } => "Save the group selection".into(),
+            Action::Reset => "Reset saved answers".into(),
         }
     }
 
@@ -182,6 +229,12 @@ impl Action {
                 choice: ReviewChoice::Merge,
                 ..
             } => "Opens chezmoi's merge tool in this terminal.",
+            Action::SetGroups { .. } => {
+                "Saves which groups this Mac uses; setup and check work from them. Nothing is installed or removed."
+            }
+            Action::Reset => {
+                "Forgets every saved answer: the group selection, repo paths, dotfile conflicts and secrets choices. Nothing on this Mac or in the repo changes; setup asks again next time."
+            }
         }
     }
 
@@ -189,6 +242,8 @@ impl Action {
     pub fn refresh(&self) -> Vec<JobKind> {
         match self {
             Action::Review { .. } => vec![JobKind::Check],
+            Action::SetGroups { .. } => vec![JobKind::List],
+            Action::Reset => vec![JobKind::List, JobKind::Check],
             Action::Install { .. }
             | Action::Uninstall { .. }
             | Action::Move { .. }
