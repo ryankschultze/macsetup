@@ -64,3 +64,78 @@ fn a_missing_engine_is_a_spawn_error() {
     assert_eq!(env.job, 7);
     assert!(matches!(env.msg, Msg::Finished(Err(JobError::Spawn(_)))));
 }
+
+fn args(v: &[&str]) -> Vec<String> {
+    v.iter().map(|s| s.to_string()).collect()
+}
+
+#[test]
+fn an_action_streams_its_events() {
+    let repo = common::fake_engine("fake-engine");
+    let (tx, rx) = mpsc::channel();
+    let pid = engine::spawn_args(
+        &repo,
+        &args(&["uninstall", "brew:pkg-one", "--drop", "--commit"]),
+        JobKind::Action,
+        3,
+        tx,
+    );
+    assert!(pid.is_some());
+    let msgs: Vec<Msg> = rx.iter().map(|e| e.msg).collect();
+    let results = msgs
+        .iter()
+        .filter(|m| matches!(m, Msg::Event(macsetup::events::Event::Result(_))))
+        .count();
+    assert_eq!(results, 3);
+    assert!(matches!(msgs.last(), Some(Msg::Finished(Ok(())))));
+}
+
+#[test]
+fn an_attached_run_writes_its_events_to_the_file() {
+    let repo = common::fake_engine("fake-engine");
+    let dir = std::env::temp_dir().join(format!("macsetup-test-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("events.ndjson");
+    let status = engine::run_attached(
+        &repo,
+        &args(&["review", "--file", "~/.example.conf", "--action", "merge"]),
+        &file,
+    )
+    .unwrap();
+    assert!(status.success());
+    let (events, bad) = engine::read_events(&file);
+    assert!(bad.is_empty());
+    assert!(matches!(
+        events.first(),
+        Some(macsetup::events::Event::Hello(_))
+    ));
+    assert!(matches!(
+        events.last(),
+        Some(macsetup::events::Event::Done(_))
+    ));
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn cancel_stops_the_whole_job_quickly() {
+    let repo = common::fake_engine("fake-engine");
+    let (tx, rx) = mpsc::channel();
+    let pid = engine::spawn_args(&repo, &args(&["slow"]), JobKind::Action, 9, tx).unwrap();
+    // wait for the first event so the engine is really running
+    let first = rx.recv_timeout(std::time::Duration::from_secs(5)).unwrap();
+    assert!(matches!(first.msg, Msg::Event(_)));
+    let started = std::time::Instant::now();
+    engine::cancel(pid);
+    let end = rx
+        .iter()
+        .find(|e| matches!(e.msg, Msg::Finished(_)))
+        .unwrap();
+    assert!(matches!(
+        end.msg,
+        Msg::Finished(Err(JobError::NoDone { .. }))
+    ));
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(5),
+        "the sleep was killed too"
+    );
+}

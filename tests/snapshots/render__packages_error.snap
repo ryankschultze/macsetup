@@ -2,7 +2,7 @@
 source: tests/render.rs
 expression: "render(&app, 100, 30)"
 ---
-" macsetup   1 Overview   2 Packages   3 Dotfiles                                             ? help "
+" macsetup   1 Overview   2 Packages   3 Capture   4 Dotfiles   5 Activity                    ? help "
 "┌ Packages ────────────────────────────────────────────────────────────────────────────────────────┐"
 "│Couldn't load the package list: the engine stopped early (exit 2): setup: unknown argument 'list'.│"
 "│Press r to retry.                                                                                 │"

@@ -168,3 +168,105 @@ fn api_mismatch() {
 fn too_small() {
     insta::assert_snapshot!(render(&common::loaded(), 50, 12));
 }
+
+// --- phase 5: actions ---------------------------------------------------------
+
+use macsetup::action::Action;
+use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+fn press(app: &mut App, code: KeyCode) {
+    app.on_key(KeyEvent::new(code, KeyModifiers::NONE));
+}
+
+/// Packages tab, group A open, cursor on pkg-one.
+fn on_pkg_one() -> App {
+    let mut app = tab(common::loaded(), Tab::Packages);
+    press(&mut app, KeyCode::Enter);
+    press(&mut app, KeyCode::Down);
+    app
+}
+
+#[test]
+fn confirm_dialog() {
+    let mut app = on_pkg_one();
+    press(&mut app, KeyCode::Char('U'));
+    insta::assert_snapshot!(render(&app, 100, 30));
+}
+
+#[test]
+fn confirm_dialog_with_a_dry_run() {
+    let mut app = on_pkg_one();
+    press(&mut app, KeyCode::Char('U'));
+    press(&mut app, KeyCode::Char('D'));
+    common::run_next(&mut app, "action-dry.ndjson");
+    insta::assert_snapshot!(render(&app, 100, 30));
+}
+
+#[test]
+fn confirm_dialog_for_a_cask_runs_in_the_terminal() {
+    let mut app = on_pkg_one();
+    app.dialog = Some(macsetup::app::Dialog {
+        action: Action::Install {
+            ids: vec!["cask:app-one".into()],
+        },
+        preview: None,
+    });
+    insta::assert_snapshot!(render(&app, 80, 24));
+}
+
+#[test]
+fn group_picker() {
+    let mut app = on_pkg_one();
+    press(&mut app, KeyCode::Char('m'));
+    insta::assert_snapshot!(render(&app, 100, 30));
+}
+
+#[test]
+fn capture_loaded() {
+    let mut app = tab(common::loaded(), Tab::Capture);
+    app.cap_sel = 1;
+    insta::assert_snapshot!(render(&app, 100, 30));
+}
+
+#[test]
+fn capture_empty() {
+    let mut app = tab(common::loaded(), Tab::Capture);
+    app.model.begin(JobKind::CaptureList);
+    app.model.capture.done = Some(Default::default());
+    insta::assert_snapshot!(render(&app, 100, 30));
+}
+
+#[test]
+fn activity_empty() {
+    insta::assert_snapshot!(render(&tab(common::loaded(), Tab::Activity), 100, 30));
+}
+
+fn after_an_action() -> App {
+    let mut app = on_pkg_one();
+    press(&mut app, KeyCode::Char('U'));
+    press(&mut app, KeyCode::Enter);
+    common::run_next(&mut app, "action.ndjson");
+    app
+}
+
+#[test]
+fn activity_after_an_action() {
+    let mut app = after_an_action();
+    app.tab = Tab::Activity;
+    insta::assert_snapshot!(render(&app, 100, 30));
+}
+
+#[test]
+fn activity_narrow() {
+    let mut app = after_an_action();
+    app.tab = Tab::Activity;
+    insta::assert_snapshot!(render(&app, 60, 24));
+}
+
+#[test]
+fn toast_after_an_action() {
+    let app = after_an_action();
+    let frame = render(&app, 100, 30);
+    assert!(frame.contains("✓ Uninstall and drop brew:pkg-one: 3 ok"));
+    insta::assert_snapshot!(frame);
+}

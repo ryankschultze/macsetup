@@ -2,7 +2,7 @@
 source: tests/render.rs
 expression: frame
 ---
-" macsetup   1 Overview   2 Packages   3 Dotfiles                                             ? help "
+" macsetup   1 Overview   2 Packages   3 Capture   4 Dotfiles   5 Activity                    ? help "
 "┌ Dotfiles ────────────────────────────────────────────────────────────────────────────────────────┐"
 "│! dotfiles: not configured yet (run setup)                                                        │"
 "│                                                                                                  │"

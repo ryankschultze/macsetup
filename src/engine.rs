@@ -1,10 +1,12 @@
-//! Talking to the setup engine: `setup api` synchronously, and long-running
-//! commands (`setup list --json`, `setup check --json`) on a reader thread that
-//! sends each event back over a channel.
+//! Talking to the setup engine: `setup api` synchronously, long-running
+//! commands (`setup list --json`, `setup check --json`, actions) on a reader
+//! thread that sends each event back over a channel, and actions that need the
+//! terminal run attached to it with `--events FILE`.
 
 use std::io::{BufRead, BufReader, Read};
+use std::os::unix::process::CommandExt;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::mpsc::Sender;
 use std::thread;
 
@@ -77,21 +79,37 @@ pub struct Envelope {
     pub msg: Msg,
 }
 
-/// Start `<repo>/setup <args> --json` and stream its events to `tx`.
-/// Never blocks: the process is read on its own thread.
-pub fn spawn(repo: &Path, kind: JobKind, job: u64, tx: Sender<Envelope>) {
+/// Start `<repo>/setup <kind's args> --json`; see [`spawn_args`].
+pub fn spawn(repo: &Path, kind: JobKind, job: u64, tx: Sender<Envelope>) -> Option<u32> {
+    let args: Vec<String> = kind.args().iter().map(|s| s.to_string()).collect();
+    spawn_args(repo, &args, kind, job, tx)
+}
+
+/// Start `<repo>/setup <args> --json` and stream its events to `tx`. Never
+/// blocks: the process is read on its own thread. It runs in its own process
+/// group, so [`cancel`] stops everything it started. Returns its pid.
+pub fn spawn_args(
+    repo: &Path,
+    args: &[String],
+    kind: JobKind,
+    job: u64,
+    tx: Sender<Envelope>,
+) -> Option<u32> {
     let setup = repo.join("setup");
     let child = Command::new(&setup)
-        .args(kind.args())
+        .args(args)
         .arg("--json")
         .current_dir(repo)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        .process_group(0)
         .spawn();
     match child {
         Ok(child) => {
+            let pid = child.id();
             thread::spawn(move || read_job(child, kind, job, tx));
+            Some(pid)
         }
         Err(e) => {
             let _ = tx.send(Envelope {
@@ -99,8 +117,44 @@ pub fn spawn(repo: &Path, kind: JobKind, job: u64, tx: Sender<Envelope>) {
                 kind,
                 msg: Msg::Finished(Err(JobError::Spawn(format!("{}: {e}", setup.display())))),
             });
+            None
         }
     }
+}
+
+/// Stop a job started by [`spawn_args`]: SIGTERM to its whole process group.
+pub fn cancel(pid: u32) {
+    let _ = Command::new("kill")
+        .arg("-TERM")
+        .arg(format!("-{pid}"))
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+/// Run `<repo>/setup <args> --events FILE` attached to this terminal (for
+/// password prompts and merge tools) and wait for it.
+pub fn run_attached(repo: &Path, args: &[String], events: &Path) -> std::io::Result<ExitStatus> {
+    Command::new(repo.join("setup"))
+        .args(args)
+        .arg("--events")
+        .arg(events)
+        .current_dir(repo)
+        .status()
+}
+
+/// The events a `--events FILE` run wrote, plus lines that weren't events.
+pub fn read_events(path: &Path) -> (Vec<Event>, Vec<String>) {
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    let mut events = Vec::new();
+    let mut bad = Vec::new();
+    for line in text.lines().filter(|l| !l.trim().is_empty()) {
+        match parse_line(line) {
+            Ok(e) => events.push(e),
+            Err(_) => bad.push(line.to_string()),
+        }
+    }
+    (events, bad)
 }
 
 fn read_job(mut child: Child, kind: JobKind, job: u64, tx: Sender<Envelope>) {
